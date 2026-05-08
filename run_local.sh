@@ -110,7 +110,7 @@ mappings:
     path: /data
 YAML
 
-# test-subjects.ttl: declares solid-community-rs as the test subject.
+# test-subjects.ttl: declares solid-data-governance-rs as the test subject.
 # WAC, ACP and authentication suites are skipped (not implemented yet).
 cat > "$CONFIG_DIR/test-subjects.ttl" <<TTL
 @prefix solid-test: <https://github.com/solid/conformance-test-harness/vocab#> .
@@ -118,12 +118,12 @@ cat > "$CONFIG_DIR/test-subjects.ttl" <<TTL
 @prefix doap: <http://usefulinc.com/ns/doap#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
-<solid-community-rs>
+<solid-data-governance-rs>
     a earl:Software, earl:TestSubject ;
-    doap:name "solid-community-rs" ;
+    doap:name "solid-data-governance-rs" ;
     doap:description "A Rust implementation of the Solid protocol." ;
     doap:programming-language "Rust" ;
-    doap:homepage <https://github.com/tuned-org-uk/solid-community-rs> ;
+    doap:homepage <https://github.com/Genefold/solid-data-governance-rs> ;
     solid-test:skip "acp", "wac", "authentication" ;
     solid-test:serverRoot <${HOST_URL}> .
 TTL

@@ -76,6 +76,7 @@ impl TestSuite {
         all.push(crate::suites::containers::suite(Arc::clone(&client)));
         all.push(crate::suites::content_negotiation::suite(Arc::clone(&client)));
         all.push(crate::suites::error_responses::suite(Arc::clone(&client)));
+        all.push(crate::suites::wac::suite(Arc::clone(&client)));
 
         // Apply optional name filter.
         let suites = if let Some(ref f) = config.filter {

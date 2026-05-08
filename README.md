@@ -1,4 +1,4 @@
-# solid-community-rs
+# solid-data-governance-rs
 
 A Rust port of the [Solid Community Server](https://github.com/CommunitySolidServer/CommunitySolidServer) (CSS) — a standards-compliant [Solid](https://solidproject.org/) server implementing the LDP, WAC, and WebID-TLS specifications.
 
@@ -41,7 +41,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 Crates live directly at the repository root — there is **no** `crates/` subdirectory.
 
 ```
-solid-community-rs/
+solid-data-governance-rs/
 ├── Cargo.toml              # workspace manifest
 │
 ├── http-types/             # core domain types
@@ -86,8 +86,8 @@ solid-community-rs/
 │   └── src/
 │       ├── app.rs          # App + AppConfig (bind, start, graceful shutdown)
 │       ├── handler.rs      # OperationHandler bridge to Axum extractors
-│       ├── middleware.rs   # CORS + request-id tower layers
-│       ├── pipeline.rs     # RequestPipeline (operation dispatch)
+│       ├── middleware.rs   # CORS + credential extraction + authz tower layers
+│       ├── pipeline.rs     # RequestPipeline (operation dispatch + authz wiring)
 │       └── routing.rs      # ldp_router() — LDP method × path table
 │
 ├── cli/                    # two runnable binaries
@@ -107,7 +107,8 @@ solid-community-rs/
             ├── error_responses.rs     # 4xx error body and header shape
             ├── health.rs              # root resource liveness checks
             ├── mod.rs
-            └── resource_crud.rs       # PUT / GET / DELETE on documents
+            ├── resource_crud.rs       # PUT / GET / DELETE on documents
+            └── wac.rs                 # WAC access control (401, WAC-Allow)
 ```
 
 ---
@@ -116,8 +117,8 @@ solid-community-rs/
 
 ```bash
 # 1. Clone
-git clone https://github.com/tuned-org-uk/solid-community-rs.git
-cd solid-community-rs
+git clone https://github.com/Genefold/solid-data-governance-rs.git
+cd solid-data-governance-rs
 
 # 2. Build everything
 cargo build --release
@@ -216,8 +217,12 @@ ok 20 - GET unknown path returns 404
 ok 21 - PATCH without supported patch Content-Type returns 415 or 405
 ok 22 - 404 response body describes the error
 ok 23 - PUT to path with missing parent returns 201 (auto-create) or 404/409
-1..23
-# passed: 23  failed: 0
+# wac
+ok 24 - GET on unprotected resource returns 200
+ok 25 - GET on ACL-protected resource without credentials returns 401
+ok 26 - WAC-Allow header is present on protected resource
+1..26
+# passed: 26  failed: 0
 ```
 
 The runner exits with code `0` on full pass and `1` if any test fails.
@@ -340,9 +345,9 @@ HTTP Request
      ▼
   server-core
   ├─ app.rs         App lifecycle: bind TCP, start Axum, graceful shutdown
-  ├─ middleware.rs  CORS + request-id tower layers
+  ├─ middleware.rs  CORS + credential extraction + authz tower layers
   ├─ routing.rs     ldp_router()  /*path + / for all LDP methods
-  ├─ pipeline.rs    RequestPipeline — dispatch to per-operation handlers
+  ├─ pipeline.rs    RequestPipeline — authz wiring + dispatch to per-operation handlers
   └─ handler.rs     bridge: Axum extractors → OperationHandler trait
          │
          ├──► http-types
@@ -354,7 +359,7 @@ HTTP Request
          │     └─ representation.rs Representation (streaming body + metadata)
          │
          ├──► solid-storage
-         │     ├─ resource_store.rs  ResourceStore trait + base/passthrough/read-only
+         │     ├─ resource_store.rs  ResourceStore trait (implemented by LdpStore)
          │     ├─ key_value.rs       KeyValueStorage, ExpiringStorage, Passthrough
          │     ├─ error.rs           StorageError (NotFound, AlreadyExpired, …)
          │     └─ backends/
@@ -366,6 +371,7 @@ HTTP Request
          │     ├─ credentials.rs    Credentials (agent WebID + issuer)
          │     ├─ permissions.rs    PermissionReader + AclPermission flags
          │     └─ authorizer.rs     Authorizer async trait
+         │                          (wired into pipeline via authz_middleware)
          │
          ├──► identity
          │     ├─ account.rs              AccountStore (CRUD + password verify)
@@ -385,7 +391,8 @@ HTTP Request
        ├─ resource_crud.rs       PUT / GET / DELETE documents
        ├─ containers.rs          LDP container behaviour
        ├─ content_negotiation.rs Accept / Content-Type negotiation
-       └─ error_responses.rs     4xx shape and headers
+       ├─ error_responses.rs     4xx shape and headers
+       └─ wac.rs                 WAC access control (401, WAC-Allow)
 ```
 
 ### Key design principles
@@ -393,10 +400,14 @@ HTTP Request
 - **Trait-based, not class-based.** Every storage backend, authoriser, and handler is an `async_trait` — swap implementations without touching call sites.
 - **`ChangeMap` for reactive updates.** Every mutating `ResourceStore` method returns a `HashMap<Url, ChangeMetadata>` so monitoring layers (notifications, webhooks) can react to fine-grained changes.
 - **Mirror the TypeScript.** Module paths, type names, and test names intentionally match their CSS counterparts to make cross-referencing straightforward.
+- **Layered authz.** Every request passes through `extract_credentials()` → `PermissionReader::read()` → `Authorizer::authorize()` before reaching an LDP handler.
 
 ---
 
 ## Contributing
+
+See [CONTRIBUTING.md](.github/CONTRIBUTING.md) for the full contributor guidelines,
+licence assignment terms, and code of conduct.
 
 ```bash
 # Format

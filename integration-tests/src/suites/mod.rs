@@ -8,3 +8,4 @@ pub mod resource_crud;
 pub mod containers;
 pub mod content_negotiation;
 pub mod error_responses;
+pub mod wac;

@@ -4,6 +4,12 @@
 //! Suitable for integration-test runs; swap in `solid-storage` backends for
 //! production persistence.
 //!
+//! ## ResourceStore impl
+//!
+//! `LdpStore` now implements `solid_storage::resource_store::ResourceStore`
+//! (delegating to the existing get / put / delete methods) so that
+//! `server-core` and `solid-storage` are no longer disconnected.
+//!
 //! ## Logging
 //!
 //! Every mutation emits a `debug!` statement so that test runs clearly show
@@ -172,5 +178,35 @@ impl LdpStore {
             });
             let _ = inserted;
         }
+    }
+}
+
+// ── solid_storage::ResourceStore bridge ──────────────────────────────────
+//
+// This impl delegates to the existing LdpStore methods so that server-core
+// and solid-storage are no longer disconnected.  Concretely it means any
+// code that accepts an `Arc<dyn ResourceStore>` can be handed an LdpStore.
+
+use solid_storage::resource_store::ResourceStoreEntry;
+
+impl solid_storage::resource_store::ResourceStore for LdpStore {
+    fn rs_get(&self, path: &str) -> Option<ResourceStoreEntry> {
+        self.get(path).map(|e| ResourceStoreEntry {
+            body:         e.body,
+            content_type: e.content_type,
+            is_container: e.is_container,
+        })
+    }
+
+    fn rs_put(&self, path: &str, body: Vec<u8>, content_type: String) -> bool {
+        self.put(path, body, content_type)
+    }
+
+    fn rs_delete(&self, path: &str) -> bool {
+        self.delete(path)
+    }
+
+    fn rs_exists(&self, path: &str) -> bool {
+        self.exists(path)
     }
 }

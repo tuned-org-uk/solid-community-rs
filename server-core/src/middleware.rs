@@ -1,10 +1,11 @@
-//! Middleware stack: CORS, conditional requests, WAC-Allow headers, static redirects.
+//! Middleware stack: CORS, credential extraction, and authz wiring.
 //!
 //! ## Logging
 //!
 //! `info!`  — every incoming request (method + URI) and its final status after
 //!             CORS decoration.
-//! `debug!` — origin header value used when setting `Access-Control-Allow-Origin`.
+//! `debug!` — origin header value used when setting `Access-Control-Allow-Origin`;
+//!             credential extraction outcome.
 
 use axum::{
     body::Body,
@@ -13,11 +14,55 @@ use axum::{
 };
 use tracing::{debug, info};
 
+use authz::credentials::Credentials;
+
+// ── credential extraction ─────────────────────────────────────────────────
+
+/// Extract a `Credentials` value from an HTTP request.
+///
+/// Supports `Authorization: Bearer <token>` only for now.
+/// The resulting `Credentials` is injected into Axum request extensions so
+/// that the authz middleware can read it without re-parsing headers.
+///
+/// When no `Authorization` header is present an **anonymous** `Credentials`
+/// (empty agent, no issuer) is returned — the authz layer decides whether
+/// anonymous access is permitted for the requested resource.
+pub fn extract_credentials(req: &Request<Body>) -> Credentials {
+    let maybe_bearer = req
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(str::to_owned);
+
+    match maybe_bearer {
+        Some(token) => {
+            debug!(token_prefix = &token[..token.len().min(8)], "extract_credentials: Bearer token present");
+            Credentials {
+                agent:  Some(token),
+                issuer: None,
+            }
+        }
+        None => {
+            debug!("extract_credentials: no Authorization header → anonymous");
+            Credentials {
+                agent:  None,
+                issuer: None,
+            }
+        }
+    }
+}
+
+// ── CORS middleware ───────────────────────────────────────────────────────
+
 /// Adds CORS headers to every response.
+///
+/// Also extracts credentials from the `Authorization` header and stores them
+/// in request extensions for downstream middleware / handlers.
 ///
 /// Mirrors the TypeScript `CorsHandler`.
 pub async fn cors_middleware(
-    req: Request<Body>,
+    mut req: Request<Body>,
     next: Next,
 ) -> Response<Body> {
     let method = req.method().clone();
@@ -33,6 +78,10 @@ pub async fn cors_middleware(
             .unwrap_or("<none>"),
         "cors_middleware: incoming request"
     );
+
+    // Extract credentials and inject into extensions.
+    let credentials = extract_credentials(&req);
+    req.extensions_mut().insert(credentials);
 
     let mut res = next.run(req).await;
 

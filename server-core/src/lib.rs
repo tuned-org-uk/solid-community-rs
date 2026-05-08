@@ -11,3 +11,4 @@ pub mod routing;
 pub mod store;
 
 pub use app::App;
+pub use pipeline::{AuthzState, PassThroughAuthorizer, PassThroughPermissionReader, RequestPipeline};
